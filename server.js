@@ -22,24 +22,28 @@ if (!process.env.MONGODB_URI) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Add this line to parse form data
 
-// CORS middleware (cess your resources. This helps )
+// CORS middleware (cess your resources. This helps)
 app.use(
   cors({
-    origin: 'http://localhost:3000',// Allow React frontend
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000', // Allow React frontend, fallback to localhost if not set
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Allow specific HTTP methods
     allowedHeaders: ['Content-Type', 'Authorization'], // Allow headers
     credentials: true, // Allow cookies if needed
   })
 );
 
-// MongoDB connection with error handling
-mongoose
-  .connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => {
+// MongoDB connection with retry logic
+const connectToMongoDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+    console.log('Connected to MongoDB');
+  } catch (err) {
     console.error('Error connecting to MongoDB:', err);
-    process.exit(1); // Exit the process if MongoDB connection fails
-  });
+    setTimeout(connectToMongoDB, 5000); // Retry connection after 5 seconds
+  }
+};
+
+connectToMongoDB(); // Initial MongoDB connection attempt
 
 // Use the employee routes
 app.use('/api', employeeRoutes);
@@ -56,27 +60,31 @@ app.use((req, res, next) => {
 
 // Centralized error handler
 app.use((err, req, res, next) => {
-  console.error(err);
+  console.error(err.stack); // Log full stack trace for debugging
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Start the server with better error handling for port binding
+const getAvailablePort = async (port) => {
+  try {
+    const server = await app.listen(port);
+    return server;
+  } catch (err) {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use, trying the next one...`);
+      return getAvailablePort(port + 1); // Try the next port if current one is in use
+    }
+    throw err; // Rethrow error if it's something else
+  }
+};
+
 // Start the server
 const PORT = parseInt(process.env.PORT, 10) || 5001;
-let server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-// Handle EADDRINUSE error (port already in use)
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Trying another port...`);
-    setTimeout(() => {
-      server.close();
-      server = app.listen(PORT + 1, () => {
-        console.log(`Server running on port ${PORT + 1}`);
-      });
-    }, 1000);
-  } else {
-    console.error(err);
-  }
-});
+getAvailablePort(PORT)
+  .then((server) => {
+    console.log(`Server running on port ${server.address().port}`);
+  })
+  .catch((err) => {
+    console.error('Error starting server:', err);
+    process.exit(1); // Exit if there's an error starting the server
+  });
