@@ -1,14 +1,13 @@
 const express = require('express');
-const bcrypt = require('bcrypt'); // Import bcrypt for password hashing
 const multer = require('multer');
 const Employee = require('../models/Employee');
 const EmployeeDetails = require('../models/EmployeeDetails');
 
-//use express validator to sanitize the input
+// Use express validator to sanitize the input
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 
-// route for signUP
+// Route for signUp
 router.post(
   '/signup',
   [
@@ -27,20 +26,14 @@ router.post(
     try {
       const { email, password } = req.body;
 
-        // Check if the email already exists in the database
+      // Check if the email already exists in the database
+      const existingEmployee = await Employee.findOne({ email });
+      if (existingEmployee) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
 
-        //used mongoose methods to prevent SQL injection
-        const existingEmployee = await Employee.findOne({ email });
-
-        if (existingEmployee) {
-          return res.status(400).json({ message: 'Email already exists' });
-        }
-
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-      //create the new employee with the hashed password
-      const newEmployee = new Employee({ email, password: hashedPassword });
+      // Create the new employee without hashing the password
+      const newEmployee = new Employee({ email, password });
 
       await newEmployee.save();
       res.status(201).json(newEmployee);
@@ -50,8 +43,7 @@ router.post(
   }
 );
 
-
-// route for login
+// Route for login
 router.post('/login', async (req, res) => {
 
   // Prevent caching for this route
@@ -66,9 +58,8 @@ router.post('/login', async (req, res) => {
       return res.status(404).json({ message: 'Invalid email or password' });
     }
 
-    // Compare the provided password with the hashed password
-    const isPasswordValid = await bcrypt.compare(password, employee.password);
-    if (!isPasswordValid) {
+    // Compare the provided password with the stored password (plain text)
+    if (employee.password !== password) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
@@ -79,11 +70,11 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// route for Add an employee
+// Route for adding an employee
 router.post(
   '/employees',
 
-  //These fields should be there
+  // These fields should be there
   [
     body('empId').isString().notEmpty().withMessage('Employee ID is required'),
     body('email').isEmail().withMessage('Invalid email format'),
@@ -98,14 +89,14 @@ router.post(
     try {
       const { empId, firstName, lastName, department, email, mobileNo, dob, dateOfJoining, address, salary, designation } = req.body;
 
-      //check if the employeeID exists
+      // Check if the employeeID exists
       const empIdExists = await EmployeeDetails.findOne({ empId });
 
       if (empIdExists) {
         return res.status(400).json({ message: 'Employee ID already exists.' });
       }
 
-      //create new employee object
+      // Create a new employee object
       const newEmployeeDetails = new EmployeeDetails({
         empId,
         firstName,
@@ -128,8 +119,7 @@ router.post(
   }
 );
 
-
-// route for get employee details
+// Route for getting employee details
 router.get('/employees', async (req, res) => {
 
   // Prevent caching for this route
@@ -143,7 +133,7 @@ router.get('/employees', async (req, res) => {
   }
 });
 
-//route for update employee details
+// Route for updating employee details
 router.put('/employees/:id', async (req, res) => {
 
   // Prevent caching for this route
@@ -157,7 +147,7 @@ router.put('/employees/:id', async (req, res) => {
   }
 });
 
-//routr for delete an employee
+// Route for deleting an employee
 router.delete('/employees/:id', async (req, res) => {
 
   // Prevent caching for this route
@@ -171,5 +161,5 @@ router.delete('/employees/:id', async (req, res) => {
   }
 });
 
-//export the route
+// Export the route
 module.exports = router;
